@@ -1,6 +1,7 @@
 import { ServiceBroker } from "@service-broker/service-broker-client";
-interface Job {
+export interface Job {
     jobInfo: unknown;
+    touch: () => void;
     destroy: () => void;
     onDestroy: (cb: () => void) => void;
 }
@@ -19,4 +20,3 @@ export declare class Worker {
     private handleSubscribe;
     private publish;
 }
-export {};

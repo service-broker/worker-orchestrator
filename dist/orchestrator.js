@@ -9,11 +9,7 @@ class Orchestrator {
         this.workers = new Map();
         sb.advertise({ name: `#${name}-orchestrator` }, msg => this.handle(msg))
             .catch(logger.error);
-        sb.notify({ name: `#${name}-worker` }, {
-            payload: JSON.stringify({
-                method: "subscribe"
-            })
-        })
+        sb.notify({ name: `#${name}-worker` }, { header: { method: "subscribe" } })
             .catch(logger.error);
     }
     handle(msg) {

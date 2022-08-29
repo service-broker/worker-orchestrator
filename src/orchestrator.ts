@@ -13,11 +13,7 @@ export class Orchestrator<JobInfo> {
   constructor(private name: string, private sb: ServiceBroker, private logger: Console) {
     sb.advertise({name: `#${name}-orchestrator`}, msg => this.handle(msg))
       .catch(logger.error)
-    sb.notify({name: `#${name}-worker`}, {
-      payload: JSON.stringify({
-        method: "subscribe"
-      })
-    })
+    sb.notify({name: `#${name}-worker`}, {header: {method: "subscribe"}})
       .catch(logger.error)
   }
 

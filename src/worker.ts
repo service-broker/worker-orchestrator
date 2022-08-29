@@ -1,7 +1,8 @@
 import { Message, MessageWithHeader, ServiceBroker } from "@service-broker/service-broker-client"
 
-interface Job {
+export interface Job {
   jobInfo: unknown
+  touch: () => void
   destroy: () => void
   onDestroy: (cb: () => void) => void
 }
@@ -14,11 +15,7 @@ export class Worker {
   constructor(private name: string, private sb: ServiceBroker, private logger: Console, private createJob: (jobId: string, jobArgs: any) => Job) {
     sb.advertise({name: `#${name}-worker`}, msg => this.handle(msg))
       .catch(logger.error)
-    sb.notify({name: `#${name}-orchestrator`}, {
-      payload: JSON.stringify({
-        method: "register"
-      })
-    })
+    sb.notify({name: `#${name}-orchestrator`}, {header: {method: "register"}})
       .catch(logger.error)
   }
 
@@ -69,9 +66,13 @@ export class Worker {
   }
 
   private handleExists(jobId: string): Message {
+    const job = this.jobs.get(jobId)
+    if (job) {
+      job.touch()
+    }
     return {
       payload: JSON.stringify({
-        exists: this.jobs.has(jobId)
+        exists: !!job
       })
     }
   }
