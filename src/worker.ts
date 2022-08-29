@@ -10,22 +10,41 @@ export interface Job {
 
 export class Worker {
   private jobs = new Map<string, Job>()
-  private subs = new Set<string>()
 
   constructor(private name: string, private sb: ServiceBroker, private logger: Console, private createJob: (jobId: string, jobArgs: any) => Job) {
-    sb.advertise({name: `#${name}-worker`}, msg => this.handle(msg))
+    sb.advertise({name: `#${name}-worker`}, msg => this.handleBroadcast(msg))
       .catch(logger.error)
-    sb.notify({name: `#${name}-orchestrator`}, {header: {method: "register"}})
+    sb.setServiceHandler(`${name}-worker`, msg => this.handleRequest(msg))
+    sb.notify({name: `#${name}-orchestrator`}, {header: {method: "workerCheckIn"}})
       .catch(logger.error)
   }
 
-  private handle(msg: MessageWithHeader) {
+  private handleBroadcast(msg: MessageWithHeader): void {
     const args = msg.header.method ? msg.header : JSON.parse(<string>msg.payload)
-    if (args.method == "create") return this.handleCreate(args.jobId, args.jobArgs)
+    if (args.method == "orchestratorCheckIn") this.handleOrchestratorCheckIn(msg.header.from)
+    else throw new Error("Unknown method")
+  }
+
+  private handleRequest(msg: MessageWithHeader): Message|void {
+    const args = msg.header.method ? msg.header : JSON.parse(<string>msg.payload)
+    if (args.method == "list") return this.handleList()
+    else if (args.method == "create") return this.handleCreate(args.jobId, args.jobArgs)
     else if (args.method == "destroy") return this.handleDestroy(args.jobId)
     else if (args.method == "exists") return this.handleExists(args.jobId)
-    else if (args.method == "subscribe") return this.handleSubscribe(msg.header.from)
     else throw new Error("Unknown method")
+  }
+
+  private handleOrchestratorCheckIn(endpointId: string): void {
+    this.sb.notifyTo(endpointId, `#${this.name}-orchestrator`, {header: {method: "workerCheckIn"}})
+      .catch(this.logger.error)
+  }
+
+  private handleList(): Message {
+    const items = Array.from(this.jobs.entries())
+      .map(([jobId, job]) => ({jobId, jobInfo: job.jobInfo}))
+    return {
+      payload: JSON.stringify(items)
+    }
   }
 
   private handleCreate(jobId: string, jobArgs: any): Message {
@@ -77,30 +96,9 @@ export class Worker {
     }
   }
 
-  private handleSubscribe(endpointId: string): Message {
-    if (this.subs.has(endpointId)) {
-    }
-    else {
-      this.subs.add(endpointId)
-      this.sb.waitEndpoint(endpointId)
-        .catch(this.logger.error)
-        .finally(() => this.subs.delete(endpointId))
-    }
-    return {
-      payload: JSON.stringify({
-        jobs: Array.from(this.jobs.entries())
-          .map(([jobId, job]) => ({jobId, jobInfo: job.jobInfo}))
-      })
-    }
-  }
-
   private publish(update: unknown) {
-    const msg = {
-      payload: JSON.stringify(update)
-    }
-    this.subs.forEach(sub => {
-      this.sb.notifyTo(sub, `#${this.name}-orchestrator`, msg)
-        .catch(this.logger.error)
-    })
+    const payload = JSON.stringify(update)
+    this.sb.notify({name: `#${this.name}-orchestrator`}, { payload })
+      .catch(this.logger.error)
   }
 }

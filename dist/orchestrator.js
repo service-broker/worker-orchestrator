@@ -7,15 +7,15 @@ class Orchestrator {
         this.sb = sb;
         this.logger = logger;
         this.workers = new Map();
-        sb.advertise({ name: `#${name}-orchestrator` }, msg => this.handle(msg))
+        sb.advertise({ name: `#${name}-orchestrator` }, msg => this.handleBroadcast(msg))
             .catch(logger.error);
-        sb.notify({ name: `#${name}-worker` }, { header: { method: "subscribe" } })
+        sb.notify({ name: `#${name}-worker` }, { header: { method: "orchestratorCheckIn" } })
             .catch(logger.error);
     }
-    handle(msg) {
+    handleBroadcast(msg) {
         const args = msg.header.method ? msg.header : JSON.parse(msg.payload);
-        if (args.method == "register")
-            return this.handleRegister(msg.header.from);
+        if (args.method == "workerCheckIn")
+            return this.handleWorkerCheckIn(msg.header.from);
         else if (args.method == "onCreate")
             return this.handleOnCreate(msg.header.from, args.jobId, args.jobInfo);
         else if (args.method == "onDestroy")
@@ -25,19 +25,19 @@ class Orchestrator {
         else
             throw new Error("Unknown method");
     }
-    async handleRegister(endpointId) {
+    async handleWorkerCheckIn(endpointId) {
         if (this.workers.has(endpointId)) {
         }
         else {
-            const res = await this.sb.requestTo(endpointId, `#${this.name}-worker`, {
-                payload: JSON.stringify({
-                    method: "subscribe"
-                })
+            const res = await this.sb.requestTo(endpointId, `${this.name}-worker`, {
+                header: {
+                    method: "list"
+                }
             });
-            const { jobs } = JSON.parse(res.payload);
+            const items = JSON.parse(res.payload);
             this.workers.set(endpointId, {
                 endpointId,
-                jobs: jobs.reduce((acc, { jobId, jobInfo }) => acc.set(jobId, jobInfo), new Map()),
+                jobs: items.reduce((acc, { jobId, jobInfo }) => acc.set(jobId, jobInfo), new Map()),
                 available: 0
             });
             this.sb.waitEndpoint(endpointId)
@@ -90,11 +90,11 @@ class Orchestrator {
         }
         const worker = candidates[Math.floor(Math.random() * candidates.length)];
         const promise = this.sb.requestTo(worker.endpointId, `#${this.name}-worker`, {
-            payload: JSON.stringify({
+            header: {
                 method: "create",
                 jobId,
                 jobArgs
-            })
+            }
         })
             .then(res => JSON.parse(res.payload).jobInfo);
         worker.jobs.set(jobId, promise);

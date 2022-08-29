@@ -5,8 +5,8 @@ export declare class Orchestrator<JobInfo> {
     private logger;
     private workers;
     constructor(name: string, sb: ServiceBroker, logger: Console);
-    private handle;
-    private handleRegister;
+    private handleBroadcast;
+    private handleWorkerCheckIn;
     private handleOnCreate;
     private handleOnDestroy;
     private handleOnAvailability;

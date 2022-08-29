@@ -11,12 +11,13 @@ export declare class Worker {
     private logger;
     private createJob;
     private jobs;
-    private subs;
     constructor(name: string, sb: ServiceBroker, logger: Console, createJob: (jobId: string, jobArgs: any) => Job);
-    private handle;
+    private handleBroadcast;
+    private handleRequest;
+    private handleOrchestratorCheckIn;
+    private handleList;
     private handleCreate;
     private handleDestroy;
     private handleExists;
-    private handleSubscribe;
     private publish;
 }

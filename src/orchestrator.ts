@@ -11,34 +11,34 @@ export class Orchestrator<JobInfo> {
   private workers = new Map<string, Worker<JobInfo>>()
 
   constructor(private name: string, private sb: ServiceBroker, private logger: Console) {
-    sb.advertise({name: `#${name}-orchestrator`}, msg => this.handle(msg))
+    sb.advertise({name: `#${name}-orchestrator`}, msg => this.handleBroadcast(msg))
       .catch(logger.error)
-    sb.notify({name: `#${name}-worker`}, {header: {method: "subscribe"}})
+    sb.notify({name: `#${name}-worker`}, {header: {method: "orchestratorCheckIn"}})
       .catch(logger.error)
   }
 
-  private handle(msg: MessageWithHeader) {
+  private handleBroadcast(msg: MessageWithHeader): void|Promise<void> {
     const args = msg.header.method ? msg.header : JSON.parse(<string>msg.payload)
-    if (args.method == "register") return this.handleRegister(msg.header.from)
+    if (args.method == "workerCheckIn") return this.handleWorkerCheckIn(msg.header.from)
     else if (args.method == "onCreate") return this.handleOnCreate(msg.header.from, args.jobId, args.jobInfo)
     else if (args.method == "onDestroy") return this.handleOnDestroy(msg.header.from, args.jobId)
     else if (args.method == "onAvailability") return this.handleOnAvailability(msg.header.from, args.available)
     else throw new Error("Unknown method")
   }
 
-  private async handleRegister(endpointId: string): Promise<void> {
+  private async handleWorkerCheckIn(endpointId: string) {
     if (this.workers.has(endpointId)) {
     }
     else {
-      const res = await this.sb.requestTo(endpointId, `#${this.name}-worker`, {
-        payload: JSON.stringify({
-          method: "subscribe"
-        })
+      const res = await this.sb.requestTo(endpointId, `${this.name}-worker`, {
+        header: {
+          method: "list"
+        }
       })
-      const { jobs } = JSON.parse(<string>res.payload) as { jobs: Array<{jobId: string, jobInfo: JobInfo}> }
+      const items = JSON.parse(<string>res.payload) as Array<{jobId: string, jobInfo: JobInfo}>
       this.workers.set(endpointId, {
         endpointId,
-        jobs: jobs.reduce((acc, {jobId, jobInfo}) => acc.set(jobId, jobInfo), new Map()),
+        jobs: items.reduce((acc, {jobId, jobInfo}) => acc.set(jobId, jobInfo), new Map()),
         available: 0
       })
       this.sb.waitEndpoint(endpointId)
@@ -92,11 +92,11 @@ export class Orchestrator<JobInfo> {
     }
     const worker = candidates[Math.floor(Math.random() * candidates.length)]
     const promise = this.sb.requestTo(worker.endpointId, `#${this.name}-worker`, {
-      payload: JSON.stringify({
+      header: {
         method: "create",
         jobId,
         jobArgs
-      })
+      }
     })
       .then(res => JSON.parse(<string>res.payload).jobInfo)
     worker.jobs.set(jobId, promise)
